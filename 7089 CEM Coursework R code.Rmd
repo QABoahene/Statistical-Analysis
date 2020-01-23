@@ -1,0 +1,575 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+#synthetic electroencephalogram (EEG)
+
+In this project, we would like to model and understand the degree (or order) of possible nonlinear interactions between those two EEG channels. The basic model can be considered as a generic nonlinear polynomial regression model with the following (exemplar) structure:
+$$y = w_{0} + w_{1}x + w_{2}x^2 + w_{3}x^3 + ... + w_{n}x^n + \epsilon $$
+
+# Exploratory Data Analysis
+loading the dataset and renaming the columns
+Loading the dataset into R, default column names were given (V1 and V2), therefore a renaming was done to make it easier to identify and work on.
+```{r}
+#reading the csv file into R
+data <- read.csv("x_y.csv", header = FALSE)
+#renaming columns to input variable x and the output variable y
+colnames(data)[colnames(data)=="V1"] <- "X"
+colnames(data)[colnames(data)=="V2"] <- "y"
+head(data)
+```
+
+## Plotting time series both input and output
+A time series shows a progression of fluctuations of a particular variable in a time space, in this coursework we plot time series input against output to analyse how the pair moves together in that time space.
+```{r}
+library(plotly)
+library(dplyr)
+time_series <-
+  ggplot(data = data, aes(x=data$X, y=data$y)) +
+    geom_area(fill="red", alpha = 0.6) +
+    geom_line(color="blue") + 
+  labs(x = "input", y = "output", title = "Time Series Plot")
+
+# Turn it interactive with ggplotly
+ggplotly(time_series)
+```
+The above plot shows the timeseries of both the input signal and its coressponding output signal. It is seen that when the input is -2.44104609, the output signal is 8.153268e^+01.
+
+## Time series for input and output signals
+```{r}
+plot.ts(data$X, col = "blue", main = "Time series plot of the inputs", ylab = "input value")
+plot.ts(data$y, col = "green", main = "Time series plot of the outputs", ylab = "output value")
+
+```
+Plotting the individuaal timeseries for both variables, the input signals has greater fluctuations as compared to the output signals. At about time, t = 60, the output signal is at its highest peak likewise the input signal.
+
+## Distribution for signal output
+```{r}
+library(ggplot2)
+signal_output <- data$y
+#plotting the density of the target variable 
+density <-ggplot(data = data, aes(signal_output)) +
+  geom_density(kernel = "gaussian", col = "orchid", fill = "purple") +
+  labs(title = "Density of Signal Output")
+histogram <- ggplot(data = data, aes(signal_output)) + 
+  geom_histogram(col = "orchid", fill = "pink", binwidth = 30) +
+  labs(title = "Histogram of Signal Output")
+ggplotly(density)
+ggplotly(histogram)
+```
+The above plot is the distribution of the Output signal variable. It can be seen that the output variable is highly skewed to the left.
+
+## Distribution for signal input
+```{r}
+signal_input <- data$X
+#plotting the density of the input variable 
+ggplot(data = data, aes(signal_input)) +
+  geom_density(kernel = "gaussian", col = "blue", fill = "pink") +
+  labs(title = "Density of Signal Input")
+ggplot(data = data, aes(signal_input)) + 
+  geom_histogram(col = "pink", fill = "orchid") +
+  labs(title = "Histogram of Signal Input")
+```
+As compared to the distribution of the output signal, the input signal is close to a normal distribution.
+
+## Input-Output correlation and scatter diagram
+```{r}
+ggplot(data, aes(x = data$X, y = data$y)) +
+    geom_point(aes(color = "red")) + 
+  labs(x = "inputs" , y = "outputs")
+```
+### Correlation test
+It can be seem from the above plot that there exist an extreme outlier. This plot also shows the correlation between the signals.
+For the correlation to be calculated, we use the pearson's correlation formula.
+Pearson correlation coeeficient for population is given as;
+$$\rho_{X,Y} = \frac {E[XY] -E[X]E[Y]}{\sqrt{E[X^2]-[E[X]]^2} \sqrt{E[Y^2]-[E[Y]]^2}}$$
+ 
+$$r_{xy} = \frac {\sum_{i=1}^n(x_{i} - \overline{x})(y_{i}- \overline{y})} {\sqrt{\sum_{i=1}^n(x_{i} - \overline{x})^2 \sqrt{\sum_{i=1}^n(y_{i}- \overline{y})^2}}}$$
+```{r}
+#correlation test 
+cor(data$X, data$y, method = "pearson", use = "complete.obs")
+```
+Using the 'cor()' functio in R, it can be seen that there exist some sort of correlation between the input signal and the output signal from the diagram above. Performing the pearson's correlation test, it is known that there exist a positive correlation of 0.2193661 between the input and output signals.
+
+## Model fitting and its performance
+```{r}
+thetaHat = solve(t(data$X)%*% data$X) %*% t(data$X) %*% data$y
+print(thetaHat)
+y_hat = data$X %*% thetaHat
+Y_hat = data.frame(y_hat)
+y_hat = Y_hat$y_hat
+histogram_pred <- ggplot(data = Y_hat, aes(y_hat)) + 
+  geom_histogram(col = "orchid", fill = "pink") +
+  labs(title = "Histogram of the predictions")
+ggplotly(histogram_pred)
+
+MSE = mean((data$y - y_hat)^2)
+print (MSE)
+error = data$y - y_hat
+Error = data.frame(error)
+error = Error$error
+histogram_error <- ggplot(data = Error, aes(error)) + 
+  geom_histogram(col = "blue", fill = "red") +
+  labs(title = "Histogram of the Error")
+ggplotly(histogram_error)
+
+```
+
+Fitting a static linear regression model to the data, thetaHat(the estimate of theta) was calculated to be 5.844558. And mean squared error (MSE) was 886.2422. This MSE shows the performance of the linear model fitted and since it is high, there is also a high residual value, therefore this model is not good.
+For the simple linear regression this is the formula.
+$$y = \theta_{0} + \theta_{1}x + \epsilon$$
+with $$\theta_{0}$$ being the intercept 
+and being zero computing the estimate for $$\theta_{1}$$
+
+# Model Selection 
+```{r}
+#Creating an intercept column
+#This creates a matrix of ones with 250 rows in one column
+library(optimbase)
+intercept = ones(nx = 250, ny = 1)
+```
+
+```{r}
+#Creating a matrix of X that consist of the intercept and dependent variables of X
+X = data$X
+X = cbind(intercept, X, X^2, X^3, X^4, X^5)
+colnames(X) = c("intercept", "X", "X^2", "X^3", "X^4", "X^5")
+```
+
+```{r}
+#This changes y into a matrix
+y <- data$y
+y <- matrix(y)
+```
+
+```{r}
+#Splitting into train set and test set where 80% is for training and 20% is for testing
+n = dim(X)[1]
+#80% trainset 
+n_train = 0.8 * n
+#splitting in train and test sets 
+X_train = X[1:n_train, ]
+y_train = as.matrix(y[1:n_train, ])
+X_test = X[(n_train+1):n, ]
+y_test = as.matrix(y[(n_train+1):n, ])
+```
+
+## Model selection (Forward model subset selection)
+```{r}
+#Creating a dataframe for MSE values
+MSE_table = data.frame(terms =  colnames(X), MSE = rep(0, length(6)))
+
+#Create a for loop to find the minimum MSE Values
+for (i in 1:6){
+  thetaHat = solve(t(X_train[,i]) %*% X_train[,i]) %*% t(X_train[,i]) %*% y_train
+  y_hat = X_test[,i] %*% thetaHat
+  
+  #Finding the errors
+  error = y_test - y_hati
+  MSE = mean(error^2)
+  MSE_table[i, 2] = MSE #Adding all the MSEs for each term in the dataframe
+}
+```
+
+## Selecting the minimum MSE value from the dataframe above
+```{r}
+new_term1 = MSE_table$terms[which.min(MSE_table$MSE)]
+#The X matrix has 250 values and I will be splitting it into a test and train set, and choosing the ones with the minimum MSE from the MSE table computed above.
+new_train1 = as.matrix(X_train[, which.min(MSE_table$MSE)])
+new_test1 = as.matrix(X_test[, which.min(MSE_table$MSE)])
+
+#Removing X^4 from the modeland computing the MSE for the other variables in the model
+X_train1 = X_train[, - which.min(MSE_table$MSE)]
+X_test1 = X_test[, - which.min(MSE_table$MSE)]
+MSE_table1 = data.frame(terms =  colnames(X_train1), MSE = rep(0, length(5))) #Creating a new dataframe
+
+for (i in 1:5){
+  train_x1 = cbind(new_train1, X_train1[, i])
+  test_x1 = cbind(new_test1, X_test1[, i])
+  thetaHat = solve(t(train_x1) %*% train_x1) %*% t(train_x1) %*% y_train
+  
+  y_hat = test_x1 %*% thetaHat
+  
+  #Finding the errors
+  error = y_test - y_hat
+  MSE1 = mean(error^2)
+  MSE_table1[i, 2] = MSE1 #Adding all the MSEs for each term in the dataframe
+  }
+```
+
+
+```{r}
+new_term2 = MSE_table1$terms[which.min(MSE_table1$MSE)]
+#The X^2 has 250 values and I will be splitting it into a test and train set
+new_train2 = as.matrix(X_train1[, which.min(MSE_table1$MSE)])
+new_test2 = as.matrix(X_test1[, which.min(MSE_table1$MSE)])
+
+#Creating a new X matrix without X^2
+X_train2 = X_train1[, - which.min(MSE_table1$MSE)]
+X_test2 = X_test1[, - which.min(MSE_table1$MSE)]
+MSE_table2 = data.frame(terms =  colnames(X_train2), MSE = rep(0, length(4))) #Creating a new dataframe
+
+for (i in 1:4){
+  train_x2 = cbind(new_train2, new_train1, X_train2[, i])
+  test_x2 = cbind(new_test2, new_test1, X_test2[, i])
+  thetaHat = solve(t(train_x2) %*% train_x2) %*% t(train_x2) %*% y_train
+  
+  y_hat = test_x2 %*% thetaHat
+  
+  #Finding the errors
+  error = y_test - y_hat
+  MSE2 = mean(error^2)
+  MSE_table2[i, 2] = MSE2 #Adding all the MSEs for each term in the dataframe
+}
+
+#New term 3
+new_term3 = MSE_table2$terms[which.min(MSE_table2$MSE)]
+#The X has 250 values and I will be splitting it into a test and train set
+new_train3 = as.matrix(X_train2[, which.min(MSE_table2$MSE)])
+new_test3 = as.matrix(X_test2[, which.min(MSE_table2$MSE)])
+```
+Selecting the variables for the model which has the least MSE, from the first MSE table, it can be seen that X^4 had the least MSE as compared to the rest, therefore X^4 was selected and MSE was performed again on the rest of the variables, this was done repeatedly so as to select the variables with the least MSE, in order to create the best model.
+
+## Final Model
+```{r}
+#Final model
+xfinal_train = cbind(new_train3, new_train2, new_train1)
+xfinal_test = cbind(new_test3, new_test2, new_test1)
+colnames(xfinal_train) = c("X", "X^2", "X^4")
+colnames(xfinal_test) = c("X", "X^2", "X^4")
+
+final_thetaHat = solve(t(xfinal_train) %*% xfinal_train) %*% t(xfinal_train) %*% y_train
+
+y_hat_final = xfinal_train %*% final_thetaHat #Refer to coursework guide about computing model prediction based on the train set
+
+#Finding the errors
+error = y_train - y_hat_final
+MSE_final = mean(error^2)
+
+ Error = data.frame(error) 
+ error = Error$error
+histogram_error <- ggplot(data = Error, aes(error)) + 
+  geom_histogram(col = "orchid", fill = "red") +
+  labs(title = "Histogram of ERROR ")
+ggplotly(histogram_error)
+```
+The final model consist of X, X^2 and X^4. These variables/regressors give the least MSE.
+
+## Covariance
+```{r}
+error = y_train - y_hat_final
+residuals_sum_of_squares = sum((error)^2)
+sigma_square = residuals_sum_of_squares/n-1
+#covariance matrix 
+cov_thetahat = sigma_square * (solve(t(xfinal_train) %*% xfinal_train)) #t(X) is transpose of X
+colnames(cov_thetahat) = c("one_theta", "two_theta", "three_theta")
+rownames(cov_thetahat) = c("one_theta", "two_theta", "three_theta")
+```
+Covariance is the matrix that shows the variability between the variables. 
+
+#Contour plotting
+```{r}
+num_param = 3
+num_points = 50 # no point on the plot
+one_theta = seq(0.489 , 0.509 , length=num_points)
+two_theta = seq(1.993 , 2.013 , length=num_points)
+three_theta = seq(1.990 , 2.010 , length=num_points)
+
+prob_den_func = matrix(0 , num_points , num_points)
+
+cov_thetahat_inv = (t(X) %*% X) * (1/sigma_square) # inverse of cov_thetaHat
+det_cov_thetahat = det(cov_thetahat) # determinent of cov_thetaHat
+
+#theta_1 and theta_2 combination
+for(r in 1:50){
+  for(c in 1:50){
+
+    one_two_theta = matrix( c(one_theta[r] , two_theta[c], final_thetaHat[3,] ) , num_param , 1)
+    thetahat_theta = one_two_theta - final_thetaHat
+
+    prob_den_func[r,c] = ( 1/sqrt( ( (2*pi)^num_param ) * det_cov_thetahat) ) * 
+     exp( -0.5 * t(-thetahat_theta) %*% solve(cov_thetahat) %*% -thetahat_theta )
+
+  }
+}
+
+contour(one_theta, two_theta, prob_den_func)
+persp(one_theta, two_theta, prob_den_func, theta = 50 , phi = 50)
+
+#one_theta and three_theta combination
+
+for(r in 1:50){
+  for(c in 1:50){
+
+    one_three_theta = matrix( c(one_theta[r], final_thetaHat[2,] , three_theta[c] ) , num_param, 1)
+    thetahat_theta = one_three_theta - final_thetaHat
+
+    prob_den_func[r,c] = ( 1/sqrt( ( (2*pi)^num_param ) * det_cov_thetahat) ) * 
+     exp( -0.5 * t(-thetahat_theta) %*% solve(cov_thetahat) %*% -thetahat_theta )
+
+  }
+}
+
+contour(one_theta, three_theta, prob_den_func)
+persp(one_theta, three_theta, prob_den_func, theta = 50 , phi = 50)
+
+
+#two_theta and three_theta combination
+
+for(r in 1:50){
+  for(c in 1:50){
+
+    two_three_theta= matrix( c(final_thetaHat[1,], two_theta[r] , three_theta[c] ) , num_param , 1)
+    thetahat_theta = two_three_theta - final_thetaHat
+
+    prob_den_func[r,c] = ( 1/sqrt( ( (2*pi)^num_param ) * det_cov_thetahat) ) * 
+    exp( -0.5 * t(-thetahat_theta) %*% solve(cov_thetahat) %*% -thetahat_theta )
+
+  }
+}
+
+contour(two_theta, three_theta, prob_den_func)
+persp(two_theta, three_theta, prob_den_func, theta = 50 , phi = 50)
+```
+
+#Confidence Interval
+```{r}
+n = 200
+var_y_hat = matrix(0 , n , 1)
+
+for( i in 1:n){
+  X_i = matrix( xfinal_train[i,] , 1 , num_param ) # X[i,] creates a vector. Convert it to matrix
+  var_y_hat[i,1] = X_i %*% cov_thetahat %*% t(X_i) # same as sigma_2 * ( X_i %*% ( solve(t(X) %*% X)  ) %*% t(X_i) )
+}
+
+CI = 2 * sqrt(var_y_hat) # Confidance interval
+
+plot(data$X[1:200], y_hat_final, type = "p")
+segments(data$X[1:200], y_hat_final-CI, data$X[1:200], y_hat_final+CI, col = "red") # Adds error bars to the indivigual data points
+```
+The confidence interval gives a range in which the parameters will fall within.
+
+#Validation
+```{r}
+X_data_matrix = X[, c(2, 3, 5)]
+colnames(X_data_matrix) = c("X","X^2", "X^4")
+
+#Splitting the data into 70/30 sets
+x_train_val = X_data_matrix[1:175,]
+y_train_val = as.matrix(data$y[1:175])
+x_test_val = X_data_matrix[176:250,]
+y_test_val = as.matrix(data$y[176:250])
+
+
+#Estimation of Parameters
+val_thetaHat = solve(t(x_train_val) %*% x_train_val) %*% t(x_train_val) %*% y_train_val
+  
+y_hat_test = x_test_val %*% val_thetaHat #for testing
+y_hat_train = x_train_val %*% val_thetaHat #for training
+
+#Finding error
+test_error = y_test_val - y_hat_test #Testing error
+train_error = y_train_val - y_hat_train #Training error
+
+#MSE
+test_MSE = mean((test_error)^2)
+train_MSE = mean((train_error)^2)
+
+#Comment on the above to prove the validity of the model.
+```
+ Validation is checking if the chosen model is the best fit or accurate for the dataset
+ Compared the MSE
+ 
+ #ABC
+```{r include=FALSE}
+pacman::p_load(ggplot2, ggthemes, tidyr, patchwork, plotly, viridis)
+```
+
+
+Load data
+```{r}
+data = read.csv("data/x_y.csv", header = F)
+colnames(data) = c("x", "y")
+```
+
+## Priors
+MLE theta is 0.502, 2.004 and 2
+Create priors for all 3 parameters
+And bind samples from priors to a matrix for easier manipulation later.
+```{r echo=FALSE}
+sampling_n = 4e7 #draw 30M from each prior
+
+prior_x1 = runif(sampling_n, -5, 5)
+prior_x2 = runif(sampling_n, -5, 5)
+prior_x4 = runif(sampling_n, -5, 5)
+
+#merge priors to one matrix so we can simply take rows as theta candidates
+priors = cbind(prior_x1, prior_x2, prior_x4)
+priors = as.data.frame(priors)
+colnames(priors) = c("x1", "x2", "x4")
+
+rm(prior_x1)
+rm(prior_x2)
+rm(prior_x4)
+```
+
+Plot priors
+```{r echo=FALSE}
+priors_long = gather(priors, prior, sample, x1:x4, factor_key = T)
+
+(priors_plot = ggplot(priors_long, aes(x = sample, color = prior))+
+  geom_density()+
+  facet_wrap(~prior, scales = "free")+
+  theme_few()+
+  scale_color_few()+
+  guides(color = F)+
+  xlab(""))
+
+ggsave("figures/10_priors.png", width = 7, height = 4)
+rm(priors_long)
+rm(priors_plot)
+```
+
+Create X matrix with predictors as columns
+```{r echo=FALSE}
+X = cbind(data$x,
+          data$x^2,
+          data$x^4
+          ) 
+```
+
+
+## Rejection ABC
+Iterate over rows of priors matrix (candidate theta values), generate data using candidate theta and measure distance between simulated and real data. If distance < tolerance, append the parameter combination to posterior samples. We can use MSE as tolerance for the rejection algorithm.
+```{r echo=FALSE}
+posterior =data.frame(x1 = numeric(),
+                      x2 = numeric(),
+                      x4 = numeric())
+
+#cross validation testing MSE +3*sd
+#tolerance = 0.028
+
+tolerance = 0.2
+
+
+for (i in 1:nrow(priors)) {
+  candidate = t(as.matrix(priors[i,]))
+  simulated = X %*% candidate
+  
+  MSE = mean((data$y - simulated)^2)
+  
+  if (MSE < tolerance) {
+    append = t(candidate)
+    colnames(append) = c("x1", "x2", "x4")
+    posterior = rbind(posterior, append)
+  }
+}
+
+cat(nrow(posterior), "samples were accepted.")
+
+write.csv(posterior, "data/posterior.csv")
+```
+
+```{r echo=FALSE}
+h1 = ggplot(posterior, aes(x = x1))+
+  geom_density()+
+  labs(x = "", y="")+
+  theme_few()
+h2 = ggplot(posterior, aes(x = x2))+
+  geom_density()+
+  labs(x = "", y="")+
+  theme_few()
+h3 = ggplot(posterior, aes(x = x4))+
+  geom_density()+
+  labs(x = "", y="")+
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = round(seq(min(posterior$x4), max(posterior$x4), by = 0.02),2))+
+  theme_few()
+
+p1 = ggplot(posterior, aes(x=x1, y=x2) ) +
+  stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) +
+  scale_fill_viridis() +
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = round(seq(min(posterior$x1), max(posterior$x1), by = 0.2),1)) +
+  scale_y_continuous(expand = c(0, 0),
+                     breaks = round(seq(min(posterior$x2), max(posterior$x2), by = 0.2),1)) +
+  theme(
+    legend.position='none'
+  )+
+  guides(fill = F)+
+  labs(x = "", y="")+
+  theme_few()
+
+p2 = ggplot(posterior, aes(x=x1, y=x4) ) +
+  stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) +
+  scale_fill_viridis() +
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = round(seq(min(posterior$x1), max(posterior$x1), by = 0.2),1)) +
+  scale_y_continuous(expand = c(0, 0),
+                     breaks = round(seq(min(posterior$x4), max(posterior$x4), by = 0.05),2)) +
+  theme(
+    legend.position='none'
+  )+
+  guides(fill = F)+
+  labs(x = "", y="")+
+  theme_few()
+
+p3 = ggplot(posterior, aes(x=x2, y=x4) ) +
+  stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) +
+  scale_fill_viridis() +
+  scale_x_continuous(expand = c(0, 0),breaks = round(seq(min(posterior$x2), max(posterior$x2), by = 0.2),1)) +
+  scale_y_continuous(expand = c(0, 0),
+                     breaks = round(seq(min(posterior$x4), max(posterior$x4), by = 0.05),2)) +
+  theme(
+    legend.position='none'
+  )+
+  guides(fill = F)+
+  labs(x = "", y="")+
+  theme_few()
+
+final_plot = 
+  (h1+(p1+coord_flip())+(p2+coord_flip()))/
+  (p1+h2+(p3+coord_flip()))/
+  (p2+p3+h3)
+ggsave("figures/11_ABC_posterior.png", width = 7, height = 4)
+```
+
+### Get MAP
+Let's extract the MAP. In this case we can assume that the mode of the posterior is the MAP.
+```{r echo=FALSE}
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+cat("x: ",getmode(posterior$x1))
+cat("\nx2:", getmode(posterior$x2))
+cat("\nx4:", getmode(posterior$x4))
+```
+
+### Generate predictions
+```{r}
+posterior = read.csv("data/posterior.csv", row.names = 1)
+predictions = data.frame()
+
+for (i in 1:nrow(posterior)) {
+    candidate = t(as.matrix(posterior[i,]))
+    simulated = X %*% candidate
+    append = data.frame(y = simulated, which = rep(i, length(simulated)))
+    colnames(append)[1] = "y"
+    predictions = rbind(predictions, append)
+}
+
+predictions$which = as.factor(predictions$which)
+predictions$x = rep(data$x, nrow(posterior))
+predictions$truth = rep(data$y, nrow(posterior))
+
+(plot_predictions = ggplot(predictions, aes(x = x, y = y, color=which))+
+  geom_line(alpha = 0.2)+
+  geom_line(aes(y = truth), color="black")+
+  guides(color = F)+
+  theme_few())
+
+ggsave("figures/12_bayesian_prediction.png", plot_predictions, width = 7, height = 4)
+```
